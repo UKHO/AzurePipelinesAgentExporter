@@ -1,30 +1,15 @@
-# [[AzureDevopsServer]]
-#     [AzureDevopsServer.OnPrem]
-#     address = "http://tfs:8080/tfs"
-# 	  defaultCollection = "UKHO"
-# 	  accessToken = "iwd35sobdp33pzfue34tfrx7rsipsnir65dgcjrhrmu3x5pzhffa"
-
-# [[AzureDevops]]
-#     [AzureDevops.UkhoGov]
-#     address = "https://ukhogov.visualstudio.com"
-# 	  accessToken = "n57xzcyqrxsnnhuepaggocsdlpkwq4fvnuzkxjmyithh62cyexka"
-#     proxy = true
-
 [servers]
 
     [servers.tfs]
     address = "http://tfs:8080/tfs"
 	defaultCollection = "UKHO"
-	accessToken =   
 
     [servers.ukhogov]
     address = "https://ukhogov.visualstudio.com"
-	accessToken = "trqysorb4wqk7peski3r7g6g2dq74aiieleppop3umqynzphwrya"
     useProxy = true
 
     [servers.ukhocustomer]
     address = "https://ukhocustomer.visualstudio.com"
-    accessToken = 
     useProxy = true
 
 [proxy]
