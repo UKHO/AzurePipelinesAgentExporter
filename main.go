@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	colorable "github.com/mattn/go-colorable"
@@ -13,20 +15,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Read in the env vars for the PAT token
 // Validate the connection
 // Validate the permissions of PAT token
-// Sort out decent logging
 // Allow location of .toml file to be passed in.
 // Add metrics for reporter
-// Add pool tags
 // Expose "ignoreHostedPools" externally. Should it be global or per project
+// Improve logging (log lower level)
+// Reformat the structure of tfsCollector to allow poolname to be captured
+// Show error if not 200 is shown on http request
+// Add "noAccessToken" flag for times when no auth is needed
 
 func init() {
 
 	log.SetFormatter(&log.TextFormatter{ForceColors: true})
 	log.SetOutput(colorable.NewColorableStdout())
-	// log.SetLevel(log.TraceLevel)
+	//log.SetLevel(log.TraceLevel)
 }
 
 func main() {
@@ -53,12 +56,38 @@ func main() {
 	// Validate config
 	configValid := true
 	for name, server := range c.Servers {
+
+		//Check if access token exists as an Env Var
+		envVar := strings.ToUpper(fmt.Sprintf("TFSEX_%v_ACCESSTOKEN", name))
+		accessToken := os.Getenv(envVar)
+
+		if accessToken != "" {
+			configLogger.WithFields(log.Fields{"serverName": fmt.Sprintf("servers.%v", name), "envVar": envVar}).Info("Using AccessToken from environment variable")
+
+			// AccessToken might already have been set from the config file. Just log we are going to override it.
+			if server.AccessToken != "" {
+				configLogger.WithFields(log.Fields{"serverName": fmt.Sprintf("servers.%v", name), "envVar": envVar}).Warning("AccessToken in config file will be overridden by AccessToken from environment variable")
+			}
+
+			// Assign EnvVar accessToken to the config object.
+			server.AccessToken = accessToken
+			c.Servers[name] = server
+		} else {
+			configLogger.WithFields(log.Fields{"serverName": fmt.Sprintf("servers.%v", name), "envVar": envVar}).Debug("Environment variable for AccessToken does not exist")
+		}
+
+		if server.AccessToken == "" {
+			configLogger.WithFields(log.Fields{"serverName": fmt.Sprintf("servers.%v", name), "envVar": envVar}).Error("AccessToken not found in config file or environment variable")
+			configValid = false
+		}
+
 		// Check that if a server has proxy set to true that the proxy table has been populated
 		if server.UseProxy && c.Proxy.URL == "" {
-			configLogger.WithField("serverName", fmt.Sprintf("servers.%v", name)).Errorf("UseProxy is true for but proxy url has not been set.")
+			configLogger.WithField("serverName", fmt.Sprintf("servers.%v", name)).Error("UseProxy is true for but proxy url has not been set.")
 			configValid = false
 		}
 	}
+
 	// Safe even if c.Proxy.Url is empty
 	proxyURL, err := url.Parse(c.Proxy.URL)
 	if err != nil {
