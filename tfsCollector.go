@@ -12,7 +12,7 @@ var (
 	installedBuildAgentsDesc = prometheus.NewDesc(
 		"tfs_build_agents_total",
 		"Total of installed build agents",
-		[]string{"enabled", "status"},
+		[]string{"enabled", "status", "pool"},
 		nil,
 	)
 
@@ -153,6 +153,7 @@ func (tc *tfsCollector) formatMetrics(in <-chan []agentMetric) <-chan prometheus
 					kv.count,
 					strconv.FormatBool(kv.enabled),
 					kv.status,
+					kv.pool,
 				)
 			}
 		}
