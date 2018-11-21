@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -70,6 +71,8 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- metric
 	}
 
+	log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("Scraped agents")
+
 	// Send time it has take to run this scrape
 	ch <- prometheus.MustNewConstMetric(
 		installedBuildAgentsDurationDesc,
@@ -78,17 +81,13 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-// if err != nil {
-// 	log.WithFields(log.Fields{"serverName": tc.tfs.Name, "error": err}).Error("Failed to retrieve agents")
-// 	return
-// }
-// log.WithFields(log.Fields{"serverName": tc.tfs.Name, "totalAgents": len(agents)}).Info("Scraped agents")
-
 func (tc *tfsCollector) collectAgents(pools []pool) <-chan result {
 	out := make(chan result)
+	var wg sync.WaitGroup
 
 	// For each pool, spin up a go routine, retrive the agents for that pool and pass both the pool and agents along into the channel for the next step
 	for _, p := range pools {
+		wg.Add(1)
 		go func(p pool) {
 			agents, err := tc.tfs.agents(p.ID)
 			if err != nil {
@@ -96,8 +95,14 @@ func (tc *tfsCollector) collectAgents(pools []pool) <-chan result {
 			}
 			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "agentsInPoolCount": len(agents)}).Debug("Retrieved agents for pool")
 			out <- result{pool: p, agents: agents}
+			wg.Done()
 		}(p)
 	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
 
 	return out
 }
