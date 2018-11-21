@@ -24,6 +24,7 @@ import (
 // Reformat the structure of tfsCollector to allow poolname to be captured
 // Show error if not 200 is shown on http request
 // Add "noAccessToken" flag for times when no auth is needed
+// Show retry succeeded
 
 func init() {
 
