@@ -63,11 +63,12 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolCount": len(pools)}).Debug("Retrieved pools")
 
 	//Get all agents from all pools,
-	chanAgents := tc.collectAgents(pools)
+	chanAgents, errOccurred := tc.collectAgents(pools)
 	chanRawMetrics := tc.calculateMetrics(chanAgents)
 	chanFormattedMetrics := tc.formatMetrics(chanRawMetrics)
+	chanBufferedMetrics := tc.bufferMetrics(chanFormattedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
 
-	for metric := range chanFormattedMetrics {
+	for metric := range chanBufferedMetrics {
 		ch <- metric
 	}
 
@@ -81,7 +82,8 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-func (tc *tfsCollector) collectAgents(pools []pool) <-chan result {
+func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
+	errOccurred := false
 	out := make(chan result)
 	var wg sync.WaitGroup
 
@@ -91,7 +93,8 @@ func (tc *tfsCollector) collectAgents(pools []pool) <-chan result {
 		go func(p pool) {
 			agents, err := tc.tfs.agents(p.ID)
 			if err != nil {
-
+				errOccurred = true
+				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "err": err}).Error("Failed to retrieve agents for pool")
 			}
 			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "agentsInPoolCount": len(agents)}).Debug("Retrieved agents for pool")
 			out <- result{pool: p, agents: agents}
@@ -104,7 +107,7 @@ func (tc *tfsCollector) collectAgents(pools []pool) <-chan result {
 		close(out)
 	}()
 
-	return out
+	return out, errOccurred
 }
 
 func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
@@ -165,5 +168,35 @@ func (tc *tfsCollector) formatMetrics(in <-chan []agentMetric) <-chan prometheus
 		close(out)
 	}()
 
+	return out
+}
+
+func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred bool) <-chan prometheus.Metric {
+	out := make(chan prometheus.Metric)
+
+	go func() {
+		metrics := []prometheus.Metric{}
+
+		// Will not exit range until 'in' chan is closed
+		// Blocks exposing the metrics until all metrics have been calculated as 'in' will only close when all metrics have been calculated
+		// If there are any errors then gives chance not to publish them
+		for m := range in {
+			metrics = append(metrics, m)
+		}
+
+		if errOccurred {
+			log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Error("Metrics not being exposed due to previous error")
+			close(out)
+			return
+		}
+
+		log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("No errors detected collecting metric. Exposing metrics")
+		for _, m := range metrics {
+			out <- m
+		}
+
+		close(out)
+
+	}()
 	return out
 }
