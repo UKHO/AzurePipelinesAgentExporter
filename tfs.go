@@ -22,68 +22,6 @@ type tfs struct {
 	AccessToken       string
 }
 
-// It would be nice to query TFS directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
-
-func (t tfs) GetAllAgents(ignoreHostedAgents bool) ([]agent, error) {
-
-	//Get all the pools from TFS
-	pools, err := t.pools()
-	if err != nil {
-		return []agent{}, err
-	}
-	log.WithFields(log.Fields{"serverName": t.Name, "poolCount": len(pools)}).Debug("Retrieved pools")
-
-	// Strip out any hosted pools
-	if ignoreHostedAgents {
-		var nonHostedPools []pool
-		for _, p := range pools {
-			if p.IsHosted == false {
-				nonHostedPools = append(nonHostedPools, p)
-			}
-		}
-		pools = nonHostedPools
-	}
-
-	ach, errc := make(chan []agent), make(chan error)
-	defer func() {
-		close(ach)
-		close(errc)
-	}()
-
-	allAgents := []agent{}
-
-	//TODO: Do something decent with errors. It needs to kill all
-	//Get all agents in each pool and collate them
-	for _, pool := range pools {
-
-		go func(id int) {
-			agentsInPool, err := t.agents(id)
-			if err != nil {
-				errc <- err
-				return
-			}
-			log.WithFields(log.Fields{"serverName": t.Name, "poolId": id, "agentsInPoolCount": len(agentsInPool)}).Debug("Retrieved agents for pool")
-
-			ach <- agentsInPool
-		}(pool.ID)
-	}
-
-	for i := 0; i < len(pools); i++ {
-		select {
-		case agentsInPool := <-ach:
-			allAgents = append(allAgents, agentsInPool...)
-		case err := <-errc:
-			//return []agent{}, err
-			log.WithFields(log.Fields{"serverName": t.Name, "error": err}).Error("Failed to get agents for a pool")
-		}
-	}
-
-	// This might be useless
-	log.WithFields(log.Fields{"serverName": t.Name, "allAgentsCount": len(allAgents)}).Debug("All agents retrieved")
-
-	return allAgents, nil
-}
-
 func (t *tfs) agents(poolID int) ([]agent, error) {
 
 	//Build request
@@ -117,7 +55,8 @@ func (t *tfs) agents(poolID int) ([]agent, error) {
 	return are.Agents, nil
 }
 
-func (t *tfs) pools() ([]pool, error) {
+// It would be nice to query TFS directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
+func (t *tfs) pools(ignoreHosted bool) ([]pool, error) {
 
 	//Build request
 	var url = t.buildURL("/_apis/distributedtask/pools")
@@ -139,6 +78,17 @@ func (t *tfs) pools() ([]pool, error) {
 	err = json.Unmarshal(responseData, &pre)
 	if err != nil {
 		return []pool{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+	}
+
+	// Remove hosted pools
+	if ignoreHosted {
+		var nonHostedPools []pool
+		for _, p := range pre.Pools {
+			if p.IsHosted == false {
+				nonHostedPools = append(nonHostedPools, p)
+			}
+		}
+		pre.Pools = nonHostedPools
 	}
 
 	return pre.Pools, nil

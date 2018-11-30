@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,7 +13,7 @@ var (
 	installedBuildAgentsDesc = prometheus.NewDesc(
 		"tfs_build_agents_total",
 		"Total of installed build agents",
-		[]string{"enabled", "status"},
+		[]string{"enabled", "status", "pool"},
 		nil,
 	)
 
@@ -37,53 +38,41 @@ func (tc tfsCollector) Describe(ch chan<- *prometheus.Desc) {
 	prometheus.DescribeByCollect(tc, ch)
 }
 
+type result struct {
+	pool   pool
+	agents []agent
+}
+
+type agentMetric struct {
+	count   float64
+	enabled bool
+	status  string
+	pool    string
+}
+
 func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 
 	start := time.Now()
 
-	agents, err := tc.tfs.GetAllAgents(tc.ignoreHostedPools)
+	//Get all the pools from TFS
+	pools, err := tc.tfs.pools(tc.ignoreHostedPools)
 	if err != nil {
-		log.WithFields(log.Fields{"serverName": tc.tfs.Name, "error": err}).Error("Failed to retrieve agents")
+		log.WithFields(log.Fields{"serverName": tc.tfs.Name, "error": err}).Error(" Scrape Failed. Could not retrive pools.")
 		return
 	}
-	log.WithFields(log.Fields{"serverName": tc.tfs.Name, "totalAgents": len(agents)}).Info("Scraped agents")
+	log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolCount": len(pools)}).Debug("Retrieved pools")
 
-	// Transform list of all agents into the metrics with individual labels
-	// Iterate over them and add them to new a map and increment the count for each possible combo of labels
-	type agentMetric struct {
-		count   float64
-		enabled bool
-		status  string
+	//Get all agents from all pools,
+	chanAgents, errOccurred := tc.collectAgents(pools)
+	chanRawMetrics := tc.calculateMetrics(chanAgents)
+	chanFormattedMetrics := tc.formatMetrics(chanRawMetrics)
+	chanBufferedMetrics := tc.bufferMetrics(chanFormattedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
+
+	for metric := range chanBufferedMetrics {
+		ch <- metric
 	}
 
-	m := make(map[string]agentMetric)
-
-	for _, a := range agents {
-		var key = strconv.FormatBool(a.Enabled) + a.Status // looks like "trueOnline"
-
-		// Does the key exist in the map?
-		// If it does increase the count on the value else create a new value
-		// assign the value back to the map
-		v, ok := m[key]
-		if ok {
-			v.count++
-		} else {
-			v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status}
-		}
-
-		m[key] = v
-	}
-
-	//Iterate over the map and foreach entry, create a metric for it with some labels
-	for _, kv := range m {
-		ch <- prometheus.MustNewConstMetric(
-			installedBuildAgentsDesc,
-			prometheus.GaugeValue,
-			kv.count,
-			strconv.FormatBool(kv.enabled),
-			kv.status,
-		)
-	}
+	log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("Scraped agents")
 
 	// Send time it has take to run this scrape
 	ch <- prometheus.MustNewConstMetric(
@@ -91,5 +80,123 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		time.Since(start).Seconds(),
 	)
+}
 
+func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
+	errOccurred := false
+	out := make(chan result)
+	var wg sync.WaitGroup
+
+	// For each pool, spin up a go routine, retrive the agents for that pool and pass both the pool and agents along into the channel for the next step
+	for _, p := range pools {
+		wg.Add(1)
+		go func(p pool) {
+			agents, err := tc.tfs.agents(p.ID)
+			if err != nil {
+				errOccurred = true
+				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "err": err}).Error("Failed to retrieve agents for pool")
+			}
+			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "agentsInPoolCount": len(agents)}).Debug("Retrieved agents for pool")
+			out <- result{pool: p, agents: agents}
+			wg.Done()
+		}(p)
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	return out, errOccurred
+}
+
+func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
+	out := make(chan []agentMetric)
+
+	go func() {
+		for n := range in {
+
+			m := make(map[string]agentMetric)
+
+			for _, a := range n.agents {
+				var key = strconv.FormatBool(a.Enabled) + a.Status // looks like "trueOnline"
+
+				// Does the key exist in the map?
+				// If it does increase the count on the value else create a new value
+				// assign the value back to the map
+				v, ok := m[key]
+				if ok {
+					v.count++
+				} else {
+					v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status, pool: n.pool.Name}
+				}
+
+				m[key] = v
+			}
+
+			//Take all the values out the map and put them into a slice, because it is prettier
+			values := []agentMetric{}
+			for _, value := range m {
+				values = append(values, value)
+			}
+
+			out <- values
+		}
+		close(out)
+	}()
+
+	return out
+}
+
+func (tc *tfsCollector) formatMetrics(in <-chan []agentMetric) <-chan prometheus.Metric {
+
+	out := make(chan prometheus.Metric)
+
+	go func() {
+		for n := range in {
+			for _, kv := range n {
+				out <- prometheus.MustNewConstMetric(
+					installedBuildAgentsDesc,
+					prometheus.GaugeValue,
+					kv.count,
+					strconv.FormatBool(kv.enabled),
+					kv.status,
+					kv.pool,
+				)
+			}
+		}
+		close(out)
+	}()
+
+	return out
+}
+
+func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred bool) <-chan prometheus.Metric {
+	out := make(chan prometheus.Metric)
+
+	go func() {
+		metrics := []prometheus.Metric{}
+
+		// Will not exit range until 'in' chan is closed
+		// Blocks exposing the metrics until all metrics have been calculated as 'in' will only close when all metrics have been calculated
+		// If there are any errors then gives chance not to publish them
+		for m := range in {
+			metrics = append(metrics, m)
+		}
+
+		if errOccurred {
+			log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Error("Metrics not being exposed due to previous error")
+			close(out)
+			return
+		}
+
+		log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("No errors detected collecting metric. Exposing metrics")
+		for _, m := range metrics {
+			out <- m
+		}
+
+		close(out)
+
+	}()
+	return out
 }
