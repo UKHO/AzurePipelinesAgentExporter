@@ -18,7 +18,6 @@ import (
 
 // Validate the connection
 // Validate the permissions of PAT token
-// Allow location of .toml file to be passed in.
 // Add metrics for reporter
 // Expose "ignoreHostedPools" externally. Should it be global or per project
 // Improve logging (log lower level)
@@ -41,8 +40,6 @@ func main() {
 	pathToConfig := flag.String("config", "config.toml", "Path to config file")
 	flag.Parse()
 
-	var port = 8080
-	var endpoint = "/metrics"
 	var ignoreHostedPools = true
 
 	var proxyURL *url.URL
@@ -101,6 +98,25 @@ func main() {
 		configValid = false
 	}
 
+	//Check if the port has been set
+	if c.Exporter.Port == 0 {
+		c.Exporter.Port = portDefault
+		configLogger.WithField("port", c.Exporter.Port).Debug("Metrics will be exposed on default port")
+	} else {
+		configLogger.WithField("port", c.Exporter.Port).Debug("Metrics will be exposed on port specified")
+	}
+
+	//Check if the endpoint has been set
+	if c.Exporter.Endpoint == "" {
+		c.Exporter.Endpoint = endpointDefault
+		configLogger.WithField("endpoint", c.Exporter.Endpoint).Debug("Metrics will be exposed on default endpoint")
+	} else {
+		if strings.HasPrefix(c.Exporter.Endpoint, "/") == false {
+			c.Exporter.Endpoint = "/" + c.Exporter.Endpoint
+		}
+		configLogger.WithField("endpoint", c.Exporter.Endpoint).Debug("Metrics will be exposed on endpoint specified")
+	}
+
 	if configValid == false {
 		configLogger.Fatal("Errors found within config")
 		return
@@ -128,7 +144,7 @@ func main() {
 		prometheus.WrapRegistererWith(prometheus.Labels{"name": tc.tfs.Name}, reg).MustRegister(tc)
 	}
 
-	http.Handle(endpoint, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	log.Info("Serving metrics at " + endpoint + " on port: " + strconv.Itoa(port))
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), nil))
+	http.Handle(c.Exporter.Endpoint, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	log.Info("Serving metrics at " + c.Exporter.Endpoint + " on port: " + strconv.Itoa(c.Exporter.Port))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(c.Exporter.Port), nil))
 }
