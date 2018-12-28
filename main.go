@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -25,6 +26,8 @@ import (
 // Show error if not 200 is shown on http request
 // Add "noAccessToken" flag for times when no auth is needed
 // Show retry succeeded
+// Make config file not be optional
+// Create -c option for config file
 
 func init() {
 
@@ -35,7 +38,9 @@ func init() {
 
 func main() {
 
-	var pathToConfig = "config.toml"
+	pathToConfig := flag.String("config", "config.toml", "Path to config file")
+	flag.Parse()
+
 	var port = 8080
 	var endpoint = "/metrics"
 	var ignoreHostedPools = true
@@ -43,12 +48,12 @@ func main() {
 	var proxyURL *url.URL
 
 	configLogger := log.WithFields(log.Fields{
-		"path": pathToConfig,
+		"path": *pathToConfig,
 	})
 
 	// Read config
 	var c config
-	if _, err := toml.DecodeFile(pathToConfig, &c); err != nil {
+	if _, err := toml.DecodeFile(*pathToConfig, &c); err != nil {
 		configLogger.WithField("error", err).Error("Failed to decode configuration file")
 		return
 	}
