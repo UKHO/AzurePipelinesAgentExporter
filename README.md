@@ -3,43 +3,44 @@
 Prometheus exporter for Azure Pipelines/Azure DevOps Server/TFS private agents. Exports metrics helpful when running a large estate of private agents across numerous queues.
 
 - Works with Azure Pipelines, Azure DevOps Server and TFS 2018
-- Supports scraping multiple instances from one exporter
-- Basic support for corprate firewall
-- Supports access tokens via environment variables
+- Supports scraping multiple servers from one exporter
+- Basic support for corprate firewalls
+- Supports access tokens through environment variables
 - Configured via TOML
-
 
 ## Configuration
 
-The exporter is configured with a [TOML](https://github.com/toml-lang/toml) file when the exporter is started through the `--config` flag.
+The exporter is configured by a [TOML](https://github.com/toml-lang/toml) file. This is passed to the exporter when it starts by using the `--config` flag.
 
-By default exposes metrics at `:8080/metrics`
+By default it exposes metrics at `:8080/metrics`
 
-Each server being scraped has it configuration "block". These require a unique name. The name is added as labels to aid diagnosing problems between servers. If the name is changed then metrics will be labeled with the new name, this can cause problems.
+Each server being scraped has it's own configuration "block". These each require a unique name. The name is added as a label to aid diagnosing problems between servers. If the name is changed then metrics will be labeled with the new name, this can cause problems.
 
 ```toml
 [servers]
     [servers.{name}]
 ```
 
-Access tokens should be configured through environment variables. The name of the variables must be - ``TFSEX_{name}_ACCESSTOKEN``. Access tokens can also be configured via the configuration file(see [FullConfiguration](#FullConfiguration))
+Access tokens should be configured through environment variables. The name of the environment variable must be - ``TFSEX_{name}_ACCESSTOKEN``. Access tokens can also be configured through the configuration file (see [Full Configuration](#Full-Configuration)) but this behaviour is discouraged.
 
 ### Basic Configuration
 
 ```toml
 [servers]
 
+    # As the access token isn't specfied in the configuration file, the exporter expects the access token to be in an environment variable.
+
     # On Premises TFS server
-    [servers.tfs] # Server "name" is TFS. This can be any string.
+    [servers.tfs] # Server "name" is tfs.
     address = "http://tfs:8080/tfs"
     defaultCollection = "dc"
 
     # Azure Pipelines
-    [servers.azuredevops]
+    [servers.azuredevops] # Server "name" is azuredevops.
     address = "https://dev.azure.com/devorg"
 
     # Azure Pipelines
-    [servers.OtherAzureDevOpsInstance]
+    [servers.OtherAzureDevOpsInstance] # Server "name" is OtherAzureDevOpsInstance
     address = "https://dev.azure.com/devorg2"
 ```
 
@@ -48,7 +49,6 @@ Access tokens should be configured through environment variables. The name of th
 ```toml
 [servers]
 
-    # Azure Pipelines
     [servers.azuredevops]
     address = "https://dev.azure.com/devorg"
     useProxy = true
@@ -75,7 +75,7 @@ Access tokens should be configured through environment variables. The name of th
     [servers.TFSInstance]
     address = "http://tfs:8080/tfs"
     defaultCollection = "dc"
-    # As access token isn't specified, an environemnt token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created
+    # As access token isn't specified, an environemnt token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created and populated
 
 [proxy]
     url = "http://proxy.devorg.com:9191"
@@ -83,7 +83,7 @@ Access tokens should be configured through environment variables. The name of th
 
 ## Tips
 
-Set Promethus timeout to be larger than 10 seconds as scrapes can sometimes take longer than that.
+Set the promethus scrape timeout to be larger than 10 seconds as scrapes can sometimes be longer 10s.
 
 ## Metrics Exposed
 
