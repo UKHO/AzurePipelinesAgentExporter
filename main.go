@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	colorable "github.com/mattn/go-colorable"
@@ -129,9 +130,9 @@ func main() {
 
 		if server.UseProxy {
 			log.WithFields(log.Fields{"server": server.Name, "serverAddress": server.Address}).Info("Proxy will be used")
-			server.client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+			server.client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), IdleConnTimeout: time.Second * 20}}
 		} else {
-			server.client = &http.Client{}
+			server.client = &http.Client{Transport: &http.Transport{IdleConnTimeout: time.Second * 20}}
 		}
 
 		tfsCollectors = append(tfsCollectors, newTFSCollector(server.tfs, ignoreHostedPools))
