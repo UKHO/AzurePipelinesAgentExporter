@@ -24,7 +24,7 @@ type tfs struct {
 
 func (t *tfs) agents(poolID int) ([]agent, error) {
 
-	//Build request
+	// Build request
 	var url = t.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/agents?includeCapabilities=false&includeAssignedRequest=true")
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -33,13 +33,13 @@ func (t *tfs) agents(poolID int) ([]agent, error) {
 	}
 	req.SetBasicAuth("", t.AccessToken)
 
-	//Make request
+	// Make request
 	responseData, err := t.makeRequest(req)
 	if err != nil {
 		return []agent{}, err
 	}
 
-	//	Turn response into JSON
+	// Turn response into JSON
 	are := agentResponseEnvelope{}
 	err = json.Unmarshal(responseData, &are)
 	if err != nil {
@@ -95,7 +95,7 @@ func (t *tfs) pools(ignoreHosted bool) ([]pool, error) {
 }
 
 func (t *tfs) currentJobs(poolID int) ([]job, error) {
-	//Build request
+	// Build request
 	var url = t.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/jobrequests/?completedRequestCount=0")
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -104,13 +104,13 @@ func (t *tfs) currentJobs(poolID int) ([]job, error) {
 	}
 	req.SetBasicAuth("", t.AccessToken)
 
-	//Make request
+	// Make request
 	responseData, err := t.makeRequest(req)
 	if err != nil {
 		return []job{}, err
 	}
 
-	//	Turn response into type from JSON
+	// Turn response into type from JSON
 	jre := jobResponseEnvelope{}
 	err = json.Unmarshal(responseData, &jre)
 	if err != nil {
