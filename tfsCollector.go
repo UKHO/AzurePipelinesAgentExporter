@@ -39,8 +39,9 @@ func (tc tfsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 type result struct {
-	pool   pool
-	agents []agent
+	pool        pool
+	agents      []agent
+	currentJobs []job
 }
 
 type agentMetric struct {
@@ -64,7 +65,8 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 
 	//Get all agents from all pools,
 	chanAgents, errOccurred := tc.collectAgents(pools)
-	chanRawMetrics := tc.calculateMetrics(chanAgents)
+	chanCurrentJobs := tc.collectCurrentJobs(chanAgents)
+	chanRawMetrics := tc.calculateMetrics(chanCurrentJobs)
 	chanFormattedMetrics := tc.formatMetrics(chanRawMetrics)
 	chanBufferedMetrics := tc.bufferMetrics(chanFormattedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
 
@@ -110,15 +112,34 @@ func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
 	return out, errOccurred
 }
 
+func (tc *tfsCollector) collectCurrentJobs(in <-chan result) <-chan result {
+	out := make(chan result)
+
+	go func() {
+		for result := range in {
+			currentJobs, err := tc.tfs.currentJobs(result.pool.ID)
+			if err != nil {
+				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "err": err}).Error("Failed to retrieve queued jobs for pool")
+			}
+			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "currentJobsInPoolCount": len(currentJobs)}).Debug("Retrieved current jobs for pools")
+			result.currentJobs = currentJobs
+
+			out <- result
+		}
+	}()
+
+	return out
+}
+
 func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
 	out := make(chan []agentMetric)
 
 	go func() {
-		for n := range in {
+		for result := range in {
 
 			m := make(map[string]agentMetric)
 
-			for _, a := range n.agents {
+			for _, a := range result.agents {
 				var key = strconv.FormatBool(a.Enabled) + a.Status // looks like "trueOnline"
 
 				// Does the key exist in the map?
@@ -128,7 +149,7 @@ func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric 
 				if ok {
 					v.count++
 				} else {
-					v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status, pool: n.pool.Name}
+					v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status, pool: result.pool.Name}
 				}
 
 				m[key] = v
@@ -199,4 +220,8 @@ func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred b
 
 	}()
 	return out
+}
+
+func calculateAgentMetrics() {
+
 }

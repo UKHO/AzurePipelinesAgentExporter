@@ -94,6 +94,32 @@ func (t *tfs) pools(ignoreHosted bool) ([]pool, error) {
 	return pre.Pools, nil
 }
 
+func (t *tfs) currentJobs(poolID int) ([]job, error) {
+	//Build request
+	var url = t.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/jobrequests/?completedRequestCount=0")
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return []job{}, fmt.Errorf("Could not generate request to find all queued jobs %v", err)
+	}
+	req.SetBasicAuth("", t.AccessToken)
+
+	//Make request
+	responseData, err := t.makeRequest(req)
+	if err != nil {
+		return []job{}, err
+	}
+
+	//	Turn response into type from JSON
+	jre := jobResponseEnvelope{}
+	err = json.Unmarshal(responseData, &jre)
+	if err != nil {
+		return []job{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+	}
+
+	return jre.Jobs, nil
+}
+
 func (t *tfs) makeRequest(req *http.Request) ([]byte, error) {
 
 	var (
