@@ -73,9 +73,8 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	//Get all agents from all pools,
 	chanAgents, errOccurred := tc.collectAgents(pools)
 	chanCurrentJobs := tc.collectCurrentJobs(chanAgents)
-	chanRawMetrics := tc.calculateMetrics(chanCurrentJobs)
-	chanFormattedMetrics := tc.formatMetrics(chanRawMetrics)
-	chanBufferedMetrics := tc.bufferMetrics(chanFormattedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
+	chanCalculatedMetrics := tc.calculateMetrics(chanCurrentJobs)
+	chanBufferedMetrics := tc.bufferMetrics(chanCalculatedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
 
 	for metric := range chanBufferedMetrics {
 		ch <- metric
@@ -139,42 +138,19 @@ func (tc *tfsCollector) collectCurrentJobs(in <-chan result) <-chan result {
 	return out
 }
 
-func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
-	out := make(chan []agentMetric)
-	//out1 := make(chan prometheus.Metric)
-
-	go func() {
-		for result := range in {
-			out <- calculateAgentMetrics(result)
-			//		out1 <- calculateQueuedJobMetrics(result)
-		}
-		close(out)
-
-	}()
-
-	return out
-}
-
-func (tc *tfsCollector) formatMetrics(in <-chan []agentMetric) <-chan prometheus.Metric {
-
+func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan prometheus.Metric {
 	out := make(chan prometheus.Metric)
 
 	go func() {
-		for n := range in {
-			for _, kv := range n {
-				out <- prometheus.MustNewConstMetric(
-					installedBuildAgentsDesc,
-					prometheus.GaugeValue,
-					kv.count,
-					strconv.FormatBool(kv.enabled),
-					kv.status,
-					kv.pool,
-				)
+		for result := range in {
+			for _, v := range calculateAgentMetrics(result) {
+				out <- v
 			}
+			out <- calculateQueuedJobMetrics(result)
 		}
 		close(out)
-	}()
 
+	}()
 	return out
 }
 
@@ -209,7 +185,7 @@ func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred b
 }
 
 func calculateQueuedJobMetrics(result result) prometheus.Metric {
-	//discover the current queued jobs
+
 	count := 0
 	for _, j := range result.currentJobs {
 		if j.AssignTime.IsZero() { //Then the job hasn't started and is therefore queued
@@ -225,7 +201,7 @@ func calculateQueuedJobMetrics(result result) prometheus.Metric {
 	)
 }
 
-func calculateAgentMetrics(result result) []agentMetric {
+func calculateAgentMetrics(result result) []prometheus.Metric {
 	m := make(map[string]agentMetric)
 
 	for _, agent := range result.agents {
@@ -257,24 +233,5 @@ func calculateAgentMetrics(result result) []agentMetric {
 
 		promMetrics = append(promMetrics, promMetric)
 	}
-
-	// Take all the values out the map and put them into a slice, because it is prettier
-	values := []agentMetric{}
-	for _, value := range m {
-		values = append(values, value)
-	}
-
-	// for _, kv := range values {
-	// 	out <- prometheus.MustNewConstMetric(
-	// 		installedBuildAgentsDesc,
-	// 		prometheus.GaugeValue,
-	// 		kv.count,
-	// 		strconv.FormatBool(kv.enabled),
-	// 		kv.status,
-	// 		kv.pool,
-	// 	)
-	// }
-
-	return values
-
+	return promMetrics
 }
