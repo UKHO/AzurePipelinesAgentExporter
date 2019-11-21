@@ -23,6 +23,13 @@ var (
 		[]string{},
 		nil,
 	)
+
+	queuedJobsDesc = prometheus.NewDesc(
+		"tfs_pool_queued_jobs",
+		"Total of queued jobs for pool",
+		[]string{"pool"},
+		nil,
+	)
 )
 
 type tfsCollector struct {
@@ -39,8 +46,9 @@ func (tc tfsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 type result struct {
-	pool   pool
-	agents []agent
+	pool        pool
+	agents      []agent
+	currentJobs []job
 }
 
 type agentMetric struct {
@@ -64,9 +72,9 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 
 	//Get all agents from all pools,
 	chanAgents, errOccurred := tc.collectAgents(pools)
-	chanRawMetrics := tc.calculateMetrics(chanAgents)
-	chanFormattedMetrics := tc.formatMetrics(chanRawMetrics)
-	chanBufferedMetrics := tc.bufferMetrics(chanFormattedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
+	chanCurrentJobs := tc.collectCurrentJobs(chanAgents)
+	chanCalculatedMetrics := tc.calculateMetrics(chanCurrentJobs)
+	chanBufferedMetrics := tc.bufferMetrics(chanCalculatedMetrics, errOccurred) //Does not start writing to the out chan until the in chan is closed. ErrOccured must be false to write anything to out chan
 
 	for metric := range chanBufferedMetrics {
 		ch <- metric
@@ -110,37 +118,19 @@ func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
 	return out, errOccurred
 }
 
-func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
-	out := make(chan []agentMetric)
+func (tc *tfsCollector) collectCurrentJobs(in <-chan result) <-chan result {
+	out := make(chan result)
 
 	go func() {
-		for n := range in {
-
-			m := make(map[string]agentMetric)
-
-			for _, a := range n.agents {
-				var key = strconv.FormatBool(a.Enabled) + a.Status // looks like "trueOnline"
-
-				// Does the key exist in the map?
-				// If it does increase the count on the value else create a new value
-				// assign the value back to the map
-				v, ok := m[key]
-				if ok {
-					v.count++
-				} else {
-					v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status, pool: n.pool.Name}
-				}
-
-				m[key] = v
+		for result := range in {
+			currentJobs, err := tc.tfs.currentJobs(result.pool.ID)
+			if err != nil {
+				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "err": err}).Error("Failed to retrieve queued jobs for pool")
 			}
+			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "currentJobsInPoolCount": len(currentJobs)}).Debug("Retrieved current jobs for pools")
+			result.currentJobs = currentJobs
 
-			//Take all the values out the map and put them into a slice, because it is prettier
-			values := []agentMetric{}
-			for _, value := range m {
-				values = append(values, value)
-			}
-
-			out <- values
+			out <- result
 		}
 		close(out)
 	}()
@@ -148,26 +138,19 @@ func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric 
 	return out
 }
 
-func (tc *tfsCollector) formatMetrics(in <-chan []agentMetric) <-chan prometheus.Metric {
-
+func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan prometheus.Metric {
 	out := make(chan prometheus.Metric)
 
 	go func() {
-		for n := range in {
-			for _, kv := range n {
-				out <- prometheus.MustNewConstMetric(
-					installedBuildAgentsDesc,
-					prometheus.GaugeValue,
-					kv.count,
-					strconv.FormatBool(kv.enabled),
-					kv.status,
-					kv.pool,
-				)
+		for result := range in {
+			for _, v := range calculateAgentMetrics(result) {
+				out <- v
 			}
+			out <- calculateQueuedJobMetrics(result)
 		}
 		close(out)
-	}()
 
+	}()
 	return out
 }
 
@@ -199,4 +182,56 @@ func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred b
 
 	}()
 	return out
+}
+
+func calculateQueuedJobMetrics(result result) prometheus.Metric {
+
+	count := 0
+	for _, j := range result.currentJobs {
+		if j.AssignTime.IsZero() { //Then the job hasn't started and is therefore queued
+			count++
+		}
+	}
+
+	return prometheus.MustNewConstMetric(
+		queuedJobsDesc,
+		prometheus.GaugeValue,
+		float64(count),
+		result.pool.Name,
+	)
+}
+
+func calculateAgentMetrics(result result) []prometheus.Metric {
+	m := make(map[string]agentMetric)
+
+	for _, agent := range result.agents {
+		var state = strconv.FormatBool(agent.Enabled) + agent.Status // looks like "trueOnline"
+
+		// Does the state already exist in the map?
+		// If it does increase the count on the value else create a new value
+		// assign the value back to the map
+		v, ok := m[state]
+		if ok {
+			v.count++
+		} else {
+			v = agentMetric{count: 1, enabled: agent.Enabled, status: agent.Status, pool: result.pool.Name}
+		}
+
+		m[state] = v
+	}
+
+	promMetrics := []prometheus.Metric{}
+	for _, p := range m {
+
+		promMetric := prometheus.MustNewConstMetric(
+			installedBuildAgentsDesc,
+			prometheus.GaugeValue,
+			p.count,
+			strconv.FormatBool(p.enabled),
+			p.status,
+			p.pool)
+
+		promMetrics = append(promMetrics, promMetric)
+	}
+	return promMetrics
 }
