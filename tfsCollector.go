@@ -141,12 +141,12 @@ func (tc *tfsCollector) collectCurrentJobs(in <-chan result) <-chan result {
 
 func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan []agentMetric {
 	out := make(chan []agentMetric)
-	out1 := make(chan prometheus.Metric)
+	//out1 := make(chan prometheus.Metric)
 
 	go func() {
 		for result := range in {
 			out <- calculateAgentMetrics(result)
-			out1 <- calculateQueuedJobMetrics(result)
+			//		out1 <- calculateQueuedJobMetrics(result)
 		}
 		close(out)
 
@@ -212,7 +212,7 @@ func calculateQueuedJobMetrics(result result) prometheus.Metric {
 	//discover the current queued jobs
 	count := 0
 	for _, j := range result.currentJobs {
-		if j.AssignTime.IsZero() { //Then the job hasn't been assigned and is queued
+		if j.AssignTime.IsZero() { //Then the job hasn't started and is therefore queued
 			count++
 		}
 	}
@@ -228,23 +228,37 @@ func calculateQueuedJobMetrics(result result) prometheus.Metric {
 func calculateAgentMetrics(result result) []agentMetric {
 	m := make(map[string]agentMetric)
 
-	for _, a := range result.agents {
-		var key = strconv.FormatBool(a.Enabled) + a.Status // looks like "trueOnline"
+	for _, agent := range result.agents {
+		var state = strconv.FormatBool(agent.Enabled) + agent.Status // looks like "trueOnline"
 
-		// Does the key exist in the map?
+		// Does the state already exist in the map?
 		// If it does increase the count on the value else create a new value
 		// assign the value back to the map
-		v, ok := m[key]
+		v, ok := m[state]
 		if ok {
 			v.count++
 		} else {
-			v = agentMetric{count: 1, enabled: a.Enabled, status: a.Status, pool: result.pool.Name}
+			v = agentMetric{count: 1, enabled: agent.Enabled, status: agent.Status, pool: result.pool.Name}
 		}
 
-		m[key] = v
+		m[state] = v
 	}
 
-	//Take all the values out the map and put them into a slice, because it is prettier
+	promMetrics := []prometheus.Metric{}
+	for _, p := range m {
+
+		promMetric := prometheus.MustNewConstMetric(
+			installedBuildAgentsDesc,
+			prometheus.GaugeValue,
+			p.count,
+			strconv.FormatBool(p.enabled),
+			p.status,
+			p.pool)
+
+		promMetrics = append(promMetrics, promMetric)
+	}
+
+	// Take all the values out the map and put them into a slice, because it is prettier
 	values := []agentMetric{}
 	for _, value := range m {
 		values = append(values, value)
