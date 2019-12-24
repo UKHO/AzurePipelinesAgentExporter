@@ -4,7 +4,7 @@ Prometheus exporter for Azure Pipelines/Azure DevOps Server/TFS private agents. 
 
 - Works with Azure Pipelines, Azure DevOps Server and TFS 2018
 - Supports scraping multiple servers from one exporter
-- Basic support for corprate firewalls
+- Basic support for corporate firewalls
 - Supports access tokens through environment variables
 - Configured via TOML
 
@@ -28,7 +28,7 @@ Access tokens should be configured through environment variables. The name of th
 ```toml
 [servers]
 
-    # As the access token isn't specfied in the configuration file, the exporter expects the access token to be in an environment variable.
+    # As the access token isn't specified in the configuration file, the exporter expects the access token to be in an environment variable.
 
     # On Premises TFS server
     [servers.tfs] # Server "name" is tfs.
@@ -75,7 +75,7 @@ Access tokens should be configured through environment variables. The name of th
     [servers.TFSInstance]
     address = "http://tfs:8080/tfs"
     defaultCollection = "dc"
-    # As access token isn't specified, an environemnt token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created and populated
+    # As access token isn't specified, an environment token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created and populated
 
 [proxy]
     url = "http://proxy.devorg.com:9191"
@@ -83,7 +83,7 @@ Access tokens should be configured through environment variables. The name of th
 
 ## Tips
 
-Set the promethus scrape timeout to be larger than 10 seconds as scrapes can sometimes be longer 10s.
+Set the prometheus scrape timeout to be larger than 10 seconds as scrapes can sometimes be longer 10s.
 
 ## Metrics Exposed
 
