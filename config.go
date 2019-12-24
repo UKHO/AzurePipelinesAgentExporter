@@ -12,7 +12,7 @@ var (
 )
 
 type config struct {
-	Servers  map[string]tfsConfig
+	Servers  map[string]azDoConfig
 	Proxy    proxy
 	Exporter exporter
 }
@@ -27,7 +27,7 @@ type proxy struct {
 	proxyURL *url.URL
 }
 
-type tfsConfig struct {
+type azDoConfig struct {
 	azdo.AzDoClient
 	UseProxy bool
 }

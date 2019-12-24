@@ -55,7 +55,7 @@ func (az *AzDoClient) Agents(poolID int) ([]Agent, error) {
 	return are.Agents, nil
 }
 
-// It would be nice to query TFS directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
+// It would be nice to query AzDo directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
 func (az *AzDoClient) Pools(ignoreHosted bool) ([]Pool, error) {
 
 	//Build request
