@@ -1,8 +1,8 @@
 # Azure Pipelines Agents Prometheus Exporter
 
-Prometheus exporter for Azure Pipelines/Azure DevOps Server/TFS private agents. Exports metrics helpful when running a large estate of private agents across numerous queues.
+Prometheus exporter for Azure Pipelines/Azure DevOps Server private agents. Exports metrics helpful when running a large estate of private agents across numerous queues.
 
-- Works with Azure Pipelines, Azure DevOps Server and TFS 2018
+- Works with Azure Pipelines and Azure DevOps Server. Some support for TFS 2018
 - Supports scraping multiple servers from one exporter
 - Basic support for corporate firewalls
 - Supports access tokens through environment variables
@@ -30,9 +30,9 @@ Access tokens should be configured through environment variables. The name of th
 
     # As the access token isn't specified in the configuration file, the exporter expects the access token to be in an environment variable.
 
-    # On Premises TFS server
-    [servers.tfs] # Server "name" is tfs.
-    address = "http://tfs:8080/tfs"
+    # Azure Devops Server
+    [servers.azdo] # Server "name" is azdo.
+    address = "http://azdo:8080/azdo"
     defaultCollection = "dc"
 
     # Azure Pipelines
@@ -62,7 +62,7 @@ Access tokens should be configured through environment variables. The name of th
 ```toml
 [exporter]
     port = 9595
-    endpoint = "/tfsmetrics"
+    endpoint = "/azdometrics"
 
 [servers]
 
@@ -72,8 +72,8 @@ Access tokens should be configured through environment variables. The name of th
     useProxy = true
     accessToken = "thisisamadeupaccesstoken"
 
-    [servers.TFSInstance]
-    address = "http://tfs:8080/tfs"
+    [servers.AzDoInstance]
+    address = "http://azdo:8080/azdo"
     defaultCollection = "dc"
     # As access token isn't specified, an environment token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created and populated
 

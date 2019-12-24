@@ -22,7 +22,7 @@ import (
 // Add metrics for reporter
 // Expose "ignoreHostedPools" externally. Should it be global or per project
 // Improve logging (log lower level)
-// Reformat the structure of tfsCollector to allow poolname to be captured
+// Reformat the structure of azdoCollector to allow poolname to be captured
 // Show error if not 200 is shown on http request
 // Add "noAccessToken" flag for times when no auth is needed
 // Show retry succeeded
@@ -123,26 +123,26 @@ func main() {
 		return
 	}
 
-	// Create and configure tfsCollector
-	var tfsCollectors []*tfsCollector
+	// Create and configure azdoCollector
+	var azDoCollectors []*azDoCollector
 	for name, server := range c.Servers {
 		server.Name = name
 
 		if server.UseProxy {
 			log.WithFields(log.Fields{"server": server.Name, "serverAddress": server.Address}).Info("Proxy will be used")
-			server.client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), IdleConnTimeout: time.Second * 20}}
+			server.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), IdleConnTimeout: time.Second * 20}}
 		} else {
-			server.client = &http.Client{Transport: &http.Transport{IdleConnTimeout: time.Second * 20}}
+			server.Client = &http.Client{Transport: &http.Transport{IdleConnTimeout: time.Second * 20}}
 		}
 
-		tfsCollectors = append(tfsCollectors, newTFSCollector(server.tfs, ignoreHostedPools))
+		azDoCollectors = append(azDoCollectors, newAzDoCollector(server.AzDoClient, ignoreHostedPools))
 		log.WithFields(log.Fields{"server": server.Name, "serverAddress": server.Address}).Info("Metrics collector created")
 	}
 
-	// Add each tfsCollector to the register so they get called when Prometheus scrapes.
+	// Add each azdoCollector to the register so they get called when Prometheus scrapes.
 	var reg = prometheus.NewRegistry()
-	for _, tc := range tfsCollectors {
-		prometheus.WrapRegistererWith(prometheus.Labels{"name": tc.tfs.Name}, reg).MustRegister(tc)
+	for _, tc := range azDoCollectors {
+		prometheus.WrapRegistererWith(prometheus.Labels{"name": tc.AzDoClient.Name}, reg).MustRegister(tc)
 	}
 
 	http.Handle(c.Exporter.Endpoint, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))

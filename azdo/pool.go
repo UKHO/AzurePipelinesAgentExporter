@@ -1,11 +1,11 @@
-package main
+package azdo
 
 type poolResponseEnvelope struct {
 	Count int    `json:"count"`
-	Pools []pool `json:"value"`
+	Pools []Pool `json:"value"`
 }
 
-type pool struct {
+type Pool struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	Size     int    `json:"size"`

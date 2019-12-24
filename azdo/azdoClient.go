@@ -1,4 +1,4 @@
-package main
+package azdo
 
 import (
 	"encoding/json"
@@ -14,36 +14,36 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type tfs struct {
-	client            *http.Client
+type AzDoClient struct {
+	Client            *http.Client
 	Name              string
 	Address           string
 	DefaultCollection string
 	AccessToken       string
 }
 
-func (t *tfs) agents(poolID int) ([]agent, error) {
+func (az *AzDoClient) Agents(poolID int) ([]Agent, error) {
 
 	// Build request
-	var url = t.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/agents?includeCapabilities=false&includeAssignedRequest=true")
+	var url = az.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/agents?includeCapabilities=false&includeAssignedRequest=true")
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return []agent{}, fmt.Errorf("Could not generate request to find all agents in poolID %v - %v", poolID, err)
+		return []Agent{}, fmt.Errorf("Could not generate request to find all agents in poolID %v - %v", poolID, err)
 	}
-	req.SetBasicAuth("", t.AccessToken)
+	req.SetBasicAuth("", az.AccessToken)
 
 	// Make request
-	responseData, err := t.makeRequest(req)
+	responseData, err := az.makeRequest(req)
 	if err != nil {
-		return []agent{}, err
+		return []Agent{}, err
 	}
 
 	// Turn response into JSON
 	are := agentResponseEnvelope{}
 	err = json.Unmarshal(responseData, &are)
 	if err != nil {
-		return []agent{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+		return []Agent{}, fmt.Errorf("Failed to convert to JSON - %v", err)
 	}
 
 	// Need to add the pool name to the agent so can be a label on metric
@@ -55,34 +55,34 @@ func (t *tfs) agents(poolID int) ([]agent, error) {
 	return are.Agents, nil
 }
 
-// It would be nice to query TFS directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
-func (t *tfs) pools(ignoreHosted bool) ([]pool, error) {
+// It would be nice to query AzDo directly for non-hosted agents. Ideally via a query string on the API but not possible- "pools?ishosted=false"
+func (az *AzDoClient) Pools(ignoreHosted bool) ([]Pool, error) {
 
 	//Build request
-	var url = t.buildURL("/_apis/distributedtask/pools")
+	var url = az.buildURL("/_apis/distributedtask/pools")
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return []pool{}, fmt.Errorf("Could not generate request to find all agent pools %v", err)
+		return []Pool{}, fmt.Errorf("Could not generate request to find all agent pools %v", err)
 	}
-	req.SetBasicAuth("", t.AccessToken)
+	req.SetBasicAuth("", az.AccessToken)
 
 	//Make request
-	responseData, err := t.makeRequest(req)
+	responseData, err := az.makeRequest(req)
 	if err != nil {
-		return []pool{}, err
+		return []Pool{}, err
 	}
 
 	//	Turn response into JSON
 	pre := poolResponseEnvelope{}
 	err = json.Unmarshal(responseData, &pre)
 	if err != nil {
-		return []pool{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+		return []Pool{}, fmt.Errorf("Failed to convert to JSON - %v", err)
 	}
 
 	// Remove hosted pools
 	if ignoreHosted {
-		var nonHostedPools []pool
+		var nonHostedPools []Pool
 		for _, p := range pre.Pools {
 			if p.IsHosted == false {
 				nonHostedPools = append(nonHostedPools, p)
@@ -94,33 +94,33 @@ func (t *tfs) pools(ignoreHosted bool) ([]pool, error) {
 	return pre.Pools, nil
 }
 
-func (t *tfs) currentJobs(poolID int) ([]job, error) {
+func (az *AzDoClient) CurrentJobs(poolID int) ([]Job, error) {
 	// Build request
-	var url = t.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/jobrequests/?completedRequestCount=0")
+	var url = az.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/jobrequests/?completedRequestCount=0")
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return []job{}, fmt.Errorf("Could not generate request to find all queued jobs %v", err)
+		return []Job{}, fmt.Errorf("Could not generate request to find all queued jobs %v", err)
 	}
-	req.SetBasicAuth("", t.AccessToken)
+	req.SetBasicAuth("", az.AccessToken)
 
 	// Make request
-	responseData, err := t.makeRequest(req)
+	responseData, err := az.makeRequest(req)
 	if err != nil {
-		return []job{}, err
+		return []Job{}, err
 	}
 
 	// Turn response into type from JSON
 	jre := jobResponseEnvelope{}
 	err = json.Unmarshal(responseData, &jre)
 	if err != nil {
-		return []job{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+		return []Job{}, fmt.Errorf("Failed to convert to JSON - %v", err)
 	}
 
 	return jre.Jobs, nil
 }
 
-func (t *tfs) makeRequest(req *http.Request) ([]byte, error) {
+func (az *AzDoClient) makeRequest(req *http.Request) ([]byte, error) {
 
 	var (
 		responseData []byte
@@ -131,11 +131,11 @@ func (t *tfs) makeRequest(req *http.Request) ([]byte, error) {
 	b.MaxElapsedTime = 30 * time.Second
 
 	notify := func(err error, ti time.Duration) {
-		log.WithFields(log.Fields{"serverName": t.Name, "URL": req.URL, "error": err}).Warning("Retrying HTTP request")
+		log.WithFields(log.Fields{"serverName": az.Name, "URL": req.URL, "error": err}).Warning("Retrying HTTP request")
 	}
 
 	retry := func() error {
-		responseData, err = t.makeHTTPRequest(req)
+		responseData, err = az.makeHTTPRequest(req)
 		return err
 	}
 
@@ -147,15 +147,15 @@ func (t *tfs) makeRequest(req *http.Request) ([]byte, error) {
 	return responseData, nil
 }
 
-func (t *tfs) makeHTTPRequest(req *http.Request) ([]byte, error) {
+func (az *AzDoClient) makeHTTPRequest(req *http.Request) ([]byte, error) {
 
 	// Send request
-	resp, err := t.client.Do(req)
+	resp, err := az.Client.Do(req)
 	if err != nil {
 		return []byte{}, fmt.Errorf("Call to %v failed: %v", req.URL, err)
 	}
 	defer resp.Body.Close()
-	log.WithFields(log.Fields{"serverName": t.Name, "URL": req.URL, "StatusCode": resp.StatusCode}).Trace("Made HTTP request")
+	log.WithFields(log.Fields{"serverName": az.Name, "URL": req.URL, "StatusCode": resp.StatusCode}).Trace("Made HTTP request")
 
 	// Read body of response
 	responseData, err := ioutil.ReadAll(resp.Body)
@@ -166,12 +166,12 @@ func (t *tfs) makeHTTPRequest(req *http.Request) ([]byte, error) {
 	return responseData, nil
 }
 
-func (t *tfs) buildURL(url string) string {
+func (az *AzDoClient) buildURL(url string) string {
 	var baseURL string
-	if t.DefaultCollection != "" {
-		baseURL = t.Address + "/" + t.DefaultCollection
+	if az.DefaultCollection != "" {
+		baseURL = az.Address + "/" + az.DefaultCollection
 	} else {
-		baseURL = t.Address
+		baseURL = az.Address
 	}
 
 	if !strings.HasPrefix(url, "/") {
