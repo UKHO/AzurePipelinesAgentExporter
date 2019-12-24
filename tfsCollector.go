@@ -30,6 +30,13 @@ var (
 		[]string{"pool"},
 		nil,
 	)
+
+	runningJobsDesc = prometheus.NewDesc(
+		"tfs_pool_running_jobs",
+		"Total of running jobs for pool",
+		[]string{"pool"},
+		nil,
+	)
 )
 
 type tfsCollector struct {
@@ -147,6 +154,7 @@ func (tc *tfsCollector) calculateMetrics(in <-chan result) <-chan prometheus.Met
 				out <- v
 			}
 			out <- calculateQueuedJobMetrics(result)
+			out <- calculateRunningJobMetrics(result)
 		}
 		close(out)
 
@@ -182,6 +190,22 @@ func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred b
 
 	}()
 	return out
+}
+
+func calculateRunningJobMetrics(result result) prometheus.Metric {
+	count := 0
+	for _, j := range result.currentJobs {
+		if !j.AssignTime.IsZero() { //Then the job has started and is therefore queued
+			count++
+		}
+	}
+
+	return prometheus.MustNewConstMetric(
+		runningJobsDesc,
+		prometheus.GaugeValue,
+		float64(count),
+		result.pool.Name,
+	)
 }
 
 func calculateQueuedJobMetrics(result result) prometheus.Metric {
