@@ -2,6 +2,8 @@ package main
 
 import (
 	"net/url"
+
+	"./azdo"
 )
 
 var (
@@ -26,6 +28,6 @@ type proxy struct {
 }
 
 type tfsConfig struct {
-	tfs
+	azdo.AzDoClient
 	UseProxy bool
 }

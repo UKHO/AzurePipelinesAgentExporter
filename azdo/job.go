@@ -1,13 +1,13 @@
-package main
+package azdo
 
 import "time"
 
 type jobResponseEnvelope struct {
 	Count int   `json:"count"`
-	Jobs  []job `json:"value"`
+	Jobs  []Job `json:"value"`
 }
 
-type job struct {
+type Job struct {
 	RequestID   int       `json:"requestId"`
 	Name        string    `json:"name"`
 	QueueTime   time.Time `json:"queueTime"`

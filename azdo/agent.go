@@ -1,11 +1,11 @@
-package main
+package azdo
 
 type agentResponseEnvelope struct {
 	Count  int     `json:"count"`
-	Agents []agent `json:"value"`
+	Agents []Agent `json:"value"`
 }
 
-type agent struct {
+type Agent struct {
 	ID      int    `json:"id"`
 	Name    string `json:"name"`
 	Size    int    `json:"size"`

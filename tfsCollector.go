@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
+
+	"./azdo"
 )
 
 var (
@@ -40,12 +42,12 @@ var (
 )
 
 type tfsCollector struct {
-	tfs               *tfs
+	AzDoClient        *azdo.AzDoClient
 	ignoreHostedPools bool
 }
 
-func newTFSCollector(t tfs, ignoreHostedPools bool) *tfsCollector {
-	return &tfsCollector{tfs: &t, ignoreHostedPools: ignoreHostedPools}
+func newTFSCollector(az azdo.AzDoClient, ignoreHostedPools bool) *tfsCollector {
+	return &tfsCollector{AzDoClient: &az, ignoreHostedPools: ignoreHostedPools}
 }
 
 func (tc tfsCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -53,9 +55,9 @@ func (tc tfsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 type result struct {
-	pool        pool
-	agents      []agent
-	currentJobs []job
+	pool        azdo.Pool
+	agents      []azdo.Agent
+	currentJobs []azdo.Job
 }
 
 type agentMetric struct {
@@ -70,12 +72,12 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now()
 
 	//Get all the pools from TFS
-	pools, err := tc.tfs.pools(tc.ignoreHostedPools)
+	pools, err := tc.AzDoClient.Pools(tc.ignoreHostedPools)
 	if err != nil {
-		log.WithFields(log.Fields{"serverName": tc.tfs.Name, "error": err}).Error(" Scrape Failed. Could not retrive pools.")
+		log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "error": err}).Error(" Scrape Failed. Could not retrive pools.")
 		return
 	}
-	log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolCount": len(pools)}).Debug("Retrieved pools")
+	log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "poolCount": len(pools)}).Debug("Retrieved pools")
 
 	//Get all agents from all pools,
 	chanAgents, errOccurred := tc.collectAgents(pools)
@@ -87,7 +89,7 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- metric
 	}
 
-	log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("Scraped agents")
+	log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name}).Info("Scraped agents")
 
 	// Send time it has take to run this scrape
 	ch <- prometheus.MustNewConstMetric(
@@ -97,7 +99,7 @@ func (tc tfsCollector) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
+func (tc *tfsCollector) collectAgents(pools []azdo.Pool) (<-chan result, bool) {
 	errOccurred := false
 	out := make(chan result)
 	var wg sync.WaitGroup
@@ -105,13 +107,13 @@ func (tc *tfsCollector) collectAgents(pools []pool) (<-chan result, bool) {
 	// For each pool, spin up a go routine, retrive the agents for that pool and pass both the pool and agents along into the channel for the next step
 	for _, p := range pools {
 		wg.Add(1)
-		go func(p pool) {
-			agents, err := tc.tfs.agents(p.ID)
+		go func(p azdo.Pool) {
+			agents, err := tc.AzDoClient.Agents(p.ID)
 			if err != nil {
 				errOccurred = true
-				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "err": err}).Error("Failed to retrieve agents for pool")
+				log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "poolId": p.ID, "err": err}).Error("Failed to retrieve agents for pool")
 			}
-			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": p.ID, "agentsInPoolCount": len(agents)}).Debug("Retrieved agents for pool")
+			log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "poolId": p.ID, "agentsInPoolCount": len(agents)}).Debug("Retrieved agents for pool")
 			out <- result{pool: p, agents: agents}
 			wg.Done()
 		}(p)
@@ -130,11 +132,11 @@ func (tc *tfsCollector) collectCurrentJobs(in <-chan result) <-chan result {
 
 	go func() {
 		for result := range in {
-			currentJobs, err := tc.tfs.currentJobs(result.pool.ID)
+			currentJobs, err := tc.AzDoClient.CurrentJobs(result.pool.ID)
 			if err != nil {
-				log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "err": err}).Error("Failed to retrieve queued jobs for pool")
+				log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "poolId": result.pool.ID, "err": err}).Error("Failed to retrieve queued jobs for pool")
 			}
-			log.WithFields(log.Fields{"serverName": tc.tfs.Name, "poolId": result.pool.ID, "currentJobsInPoolCount": len(currentJobs)}).Debug("Retrieved current jobs for pools")
+			log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name, "poolId": result.pool.ID, "currentJobsInPoolCount": len(currentJobs)}).Debug("Retrieved current jobs for pools")
 			result.currentJobs = currentJobs
 
 			out <- result
@@ -176,12 +178,12 @@ func (tc *tfsCollector) bufferMetrics(in <-chan prometheus.Metric, errOccurred b
 		}
 
 		if errOccurred {
-			log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Error("Metrics not being exposed due to previous error")
+			log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name}).Error("Metrics not being exposed due to previous error")
 			close(out)
 			return
 		}
 
-		log.WithFields(log.Fields{"serverName": tc.tfs.Name}).Info("No errors detected collecting metric. Exposing metrics")
+		log.WithFields(log.Fields{"serverName": tc.AzDoClient.Name}).Info("No errors detected collecting metric. Exposing metrics")
 		for _, m := range metrics {
 			out <- m
 		}

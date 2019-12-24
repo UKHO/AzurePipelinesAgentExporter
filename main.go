@@ -130,19 +130,19 @@ func main() {
 
 		if server.UseProxy {
 			log.WithFields(log.Fields{"server": server.Name, "serverAddress": server.Address}).Info("Proxy will be used")
-			server.client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), IdleConnTimeout: time.Second * 20}}
+			server.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), IdleConnTimeout: time.Second * 20}}
 		} else {
-			server.client = &http.Client{Transport: &http.Transport{IdleConnTimeout: time.Second * 20}}
+			server.Client = &http.Client{Transport: &http.Transport{IdleConnTimeout: time.Second * 20}}
 		}
 
-		tfsCollectors = append(tfsCollectors, newTFSCollector(server.tfs, ignoreHostedPools))
+		tfsCollectors = append(tfsCollectors, newTFSCollector(server.AzDoClient, ignoreHostedPools))
 		log.WithFields(log.Fields{"server": server.Name, "serverAddress": server.Address}).Info("Metrics collector created")
 	}
 
 	// Add each tfsCollector to the register so they get called when Prometheus scrapes.
 	var reg = prometheus.NewRegistry()
 	for _, tc := range tfsCollectors {
-		prometheus.WrapRegistererWith(prometheus.Labels{"name": tc.tfs.Name}, reg).MustRegister(tc)
+		prometheus.WrapRegistererWith(prometheus.Labels{"name": tc.AzDoClient.Name}, reg).MustRegister(tc)
 	}
 
 	http.Handle(c.Exporter.Endpoint, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
