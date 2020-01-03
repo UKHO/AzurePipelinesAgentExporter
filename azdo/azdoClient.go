@@ -120,6 +120,45 @@ func (az *AzDoClient) CurrentJobs(poolID int) ([]Job, error) {
 	return jre.Jobs, nil
 }
 
+func (az *AzDoClient) CompletedJobsAfter(poolID int, after time.Time) ([]Job, error) {
+
+	// Build request
+	var url = az.buildURL("/_apis/distributedtask/pools/" + strconv.Itoa(poolID) + "/jobrequests/?completedRequestCount=10")
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return []Job{}, fmt.Errorf("Could not generate request to find all queued jobs %v", err)
+	}
+	req.SetBasicAuth("", az.AccessToken)
+
+	// Make request
+	responseData, err := az.makeRequest(req)
+	if err != nil {
+		return []Job{}, err
+	}
+
+	// Turn response into type from JSON
+	jre := jobResponseEnvelope{}
+	err = json.Unmarshal(responseData, &jre)
+	if err != nil {
+		return []Job{}, fmt.Errorf("Failed to convert to JSON - %v", err)
+	}
+
+	var finishedJobs []Job
+
+	for _, job := range jre.Jobs {
+		if job.FinishTime.IsZero() {
+			continue
+		}
+
+		if job.FinishTime.After(after) {
+			finishedJobs = append(finishedJobs, job)
+		}
+	}
+
+	return finishedJobs, nil
+}
+
 func (az *AzDoClient) makeRequest(req *http.Request) ([]byte, error) {
 
 	var (
