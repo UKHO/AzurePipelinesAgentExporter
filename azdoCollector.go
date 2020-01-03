@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -97,13 +98,20 @@ func (azc *azDoCollector) scrapeJobs(metricsContextChanIn <-chan metricsContext)
 	go func() {
 		for metricsContext := range metricsContextChanIn {
 
-			_, currentJobs, err := azc.AzDoClient.JobsAfter(metricsContext.pool.ID, azc.lastScrape)
+			finishedJobs, currentJobs, err := azc.AzDoClient.JobsAfter(metricsContext.pool.ID, azc.lastScrape)
 			if err != nil {
 				log.WithFields(log.Fields{"serverName": azc.AzDoClient.Name, "poolId": metricsContext.pool.ID, "err": err}).Error("Failed to retrieve queued jobs for pool")
 			}
 			log.WithFields(log.Fields{"serverName": azc.AzDoClient.Name, "poolId": metricsContext.pool.ID, "currentJobsInPoolCount": len(currentJobs)}).Debug("Retrieved current jobs for pools")
 
-			metricsContext.currentJobs = currentJobs // Augment the metrics context with the current jobs for this pool
+			metricsContext.currentJobs = currentJobs   // Augment the metrics context with the current jobs for this pool
+			metricsContext.finishedJobs = finishedJobs // Augment the metrics context with the finished jobs for this pool(since the last scrape)
+
+			if len(finishedJobs) != 0 {
+				for _, j := range finishedJobs {
+					fmt.Println(j.JobID, j.FinishTime.Sub(j.AssignTime), metricsContext.pool.Name)
+				}
+			}
 
 			metricsContextChanOut <- metricsContext
 		}
@@ -167,7 +175,8 @@ func (azc *azDoCollector) bufferMetrics(metricsIn <-chan prometheus.Metric, errO
 
 // Contains all the information needed to calculate the metrics
 type metricsContext struct {
-	pool        azdo.Pool
-	agents      []azdo.Agent
-	currentJobs []azdo.Job
+	pool         azdo.Pool
+	agents       []azdo.Agent
+	currentJobs  []azdo.Job
+	finishedJobs []azdo.Job
 }
