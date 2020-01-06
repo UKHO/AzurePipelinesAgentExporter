@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -106,12 +105,6 @@ func (azc *azDoCollector) scrapeJobs(metricsContextChanIn <-chan metricsContext)
 
 			metricsContext.currentJobs = currentJobs   // Augment the metrics context with the current jobs for this pool
 			metricsContext.finishedJobs = finishedJobs // Augment the metrics context with the finished jobs for this pool(since the last scrape)
-
-			if len(finishedJobs) != 0 {
-				for _, j := range finishedJobs {
-					fmt.Println(j.JobID, j.FinishTime.Sub(j.AssignTime), metricsContext.pool.Name)
-				}
-			}
 
 			metricsContextChanOut <- metricsContext
 		}
