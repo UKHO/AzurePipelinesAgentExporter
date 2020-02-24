@@ -98,3 +98,9 @@ Set the prometheus scrape timeout to be larger than 10 seconds as scrapes can so
   - Gauge of the total of running jobs for pool. Has labels of `"pool"`
 - tfs_pool_total_jobs
   - Gauge of the total of jobs for pool, this is the sum of running and queued. Has labels of `"pool"`
+- tfs_pool_job_total_length_secs
+  - Histogram of total length of a job duration in a pool, combining both queued and running. Has labels of `"pool"`
+- tfs_pool_job_queue_length_secs
+  - Histogram of the length of the time a job spent queued. Has labels of `"pool"`
+- tfs_pool_job_running_length_secs
+  - Histogram of the length of time a job spent running. Has labels of `"pool"`
