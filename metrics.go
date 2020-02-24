@@ -48,7 +48,7 @@ func calculateHistograms(metricContext metricsContext) []prometheus.Metric {
 	totalTimes := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:        "tfs_pool_job_total_length_secs",
 		Help:        "Total length of job duration for pool",
-		Buckets:     prometheus.LinearBuckets(0, 60, 20), // 40 buckets, each 30 seconds wide
+		Buckets:     calculateBuckets(),
 		ConstLabels: map[string]string{"pool": metricContext.pool.Name},
 	})
 
@@ -60,7 +60,7 @@ func calculateHistograms(metricContext metricsContext) []prometheus.Metric {
 	queueTimes := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:        "tfs_pool_job_queue_length_secs",
 		Help:        "Total length of queue duration for pool",
-		Buckets:     prometheus.LinearBuckets(0, 60, 20), // 40 buckets, each 30 seconds wide
+		Buckets:     prometheus.ExponentialBuckets(1, 2, 10), // 10 buckets, starting at one, doubling
 		ConstLabels: map[string]string{"pool": metricContext.pool.Name},
 	})
 
@@ -72,7 +72,7 @@ func calculateHistograms(metricContext metricsContext) []prometheus.Metric {
 	jobTimes := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:        "tfs_pool_job_running_length_secs",
 		Help:        "Total length of queue duration for pool",
-		Buckets:     prometheus.LinearBuckets(0, 60, 20), // 40 buckets, each 30 seconds wide
+		Buckets:     calculateBuckets(),
 		ConstLabels: map[string]string{"pool": metricContext.pool.Name},
 	})
 
@@ -85,6 +85,26 @@ func calculateHistograms(metricContext metricsContext) []prometheus.Metric {
 		queueTimes,
 		jobTimes,
 	}
+}
+
+func calculateBuckets() []float64 {
+	var b = buckets(0, 15, 8)                       // start at 0, gap of 15 between buckets and 10 of them
+	b = append(b, buckets(b[len(b)-1], 30, 10)...)  // start of the last value of previous slice, gap of 30 between buckets and 10 of them
+	b = append(b, buckets(b[len(b)-1], 60, 28)...)  // start of the last value of previous slice, gap of 30 between buckets and 10 of them
+	b = append(b, buckets(b[len(b)-1], 300, 11)...) // start of the last value of previous slice, gap of 300 between buckets and 11 of them
+	return b
+}
+
+func buckets(start float64, gap float64, count int) []float64 {
+	var s []float64
+	var currentBucket = start
+
+	for i := 0; i < count; i++ {
+		currentBucket = currentBucket + gap
+		s = append(s, currentBucket)
+	}
+
+	return s
 }
 
 func calculateJobMetrics(metricContext metricsContext) []prometheus.Metric {
