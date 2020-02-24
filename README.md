@@ -96,3 +96,9 @@ Set the prometheus scrape timeout to be larger than 10 seconds as scrapes can so
   - A queued job is a job that has not yet started. If you have 6 build agents and 7 jobs, 6 jobs will be assigned to the agents, leaving one not started. `tfs_pool_queued_jobs` will then display `1`
 - tfs_pool_running_jobs
   - Gauge of the total of running jobs for pool. Has labels of `"pool"`
+- tfs_pool_job_total_length_secs
+  - Histogram of total length of a job duration in a pool, combining both queued and running. Has labels of `"pool"`
+- tfs_pool_job_queue_length_secs
+  - Histogram of the length of the time a job spent queued. Has labels of `"pool"`
+- tfs_pool_job_running_length_secs
+  - Histogram of the length of time a job spent running. Has labels of `"pool"`
