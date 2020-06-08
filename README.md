@@ -8,6 +8,8 @@ Prometheus exporter for Azure Pipelines/Azure DevOps Server private agents. Expo
 - Supports access tokens through environment variables
 - Configured via TOML
 
+![](./SampleGraphs.png)
+
 ## Configuration
 
 The exporter is configured by a [TOML](https://github.com/toml-lang/toml) file. This is passed to the exporter when it starts by using the `--config` flag.
