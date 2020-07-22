@@ -1,0 +1,19 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: Docker@2
+  inputs:
+    command: login
+    containerRegistry: $(dockerserviceconnection)
+  displayName: Login to dockerhub
+- script: |
+    docker build -t ukhydrographicoffice/azdoexporter .
+  displayName: 'Build exporter and image'
+- script: |
+    docker push ukhydrographicoffice/azdoexporter
+  displayName: 'Push image'
+

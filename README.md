@@ -1,56 +1,93 @@
 # Azure Pipelines Agents Prometheus Exporter
 
-Prometheus exporter for Azure Pipelines/Azure DevOps Server private agents. Exports metrics helpful when running a large estate of private agents across numerous queues.
+A Prometheus exporter for Azure DevOps/Azure DevOps Server self hosted agents. Exposes metrics helpful for running agents across numerous queues.
 
-- Works with Azure Pipelines and Azure DevOps Server. Some support for TFS 2018
-- Supports scraping multiple servers from one exporter
+- Works with Azure DevOps and Azure DevOps Server. Untested support for TFS 2018
+- Scrapes multiple servers from one exporter
 - Basic support for corporate firewalls
-- Supports access tokens through environment variables
 - Configured via TOML
 
-![](/SampleGraphs.PNG)
+![Graph of metrics displayed in Grafana](/SampleGraphs.PNG)
 
-## Configuration
+## Docker Quickstart
 
-The exporter is configured by a [TOML](https://github.com/toml-lang/toml) file. This is passed to the exporter when it starts by using the `--config` flag.
+Create a [Personal Access Token](https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=preview-page) with the following permissions:
 
-By default it exposes metrics at `:8080/metrics`
+- Agent Pools (Read)
+- Build (Read)
+- Release (Read)
 
-Each server being scraped has it's own configuration "block". These each require a unique name. The name is added as a label to aid diagnosing problems between servers. If the name is changed then metrics will be labeled with the new name, this can cause problems.
+Create a `config.toml` file with this configuration:
 
 ```toml
 [servers]
-    [servers.{name}]
+    [servers.azdo]
+    address = "https://dev.azure.com/your_org_goes_here"
 ```
 
-Access tokens should be configured through environment variables. The name of the environment variable must be - ``TFSEX_{name}_ACCESSTOKEN``. Access tokens can also be configured through the configuration file (see [Full Configuration](#Full-Configuration)) but this behaviour is discouraged.
+Start the container while binding the `config.toml` created above
+
+```bash
+docker run \
+  -v $(pwd)/config.toml:/config.toml \  
+  -p 8080:8080 \
+  -e TFSEX_azdo_ACCESSTOKEN=your_access_token_goes_here
+  --rm \
+  ukhydrographicoffice/azdoexporter
+```
+
+The collected metrics are available at `:8080/metrics`
+
+## Configuration
+
+The exporter is configured through a [TOML](https://github.com/toml-lang/toml) configuration file, the configuration file location can passed into the exporter through the `--config` flag.
+
+If a `--config` flag isn't provided, the exporter looks for a `config.toml` in its current location.
+
+For each server the exporter scrapes, a configuration "block" is needed. Each of these blocks must have a unique name:
+
+```toml
+[servers]
+    [servers.unique_name_1]
+    address = "https://dev.azure.com/devorg"
+
+    [servers.unique_name_2]
+    address = "https://dev.azure.com/devorg2"
+```
+
+The unique name is added as a label to the metrics and is useful for differentiating between metrics from different servers. Be careful of changing this unique name as it will force the metrics to have a different label which can cause issues problems, especially on dashboards
+
+Access tokens for Azure DevOps should be provided using environment variables. The required name of the environment variable is in the format `TFSEX_unique_name_1_ACCESSTOKEN`. Access tokens can be added through the configuration file (see [Full Configuration](#Full-Configuration)) but is discouraged.
+
+The default port and url where the metrics are exposed is `:8080/metrics`
 
 ### Basic Configuration
 
 ```toml
 [servers]
-
-    # As the access token isn't specified in the configuration file, the exporter expects the access token to be in an environment variable.
-
-    # Azure Devops Server
-    [servers.azdo] # Server "name" is azdo.
+    # On Prem Azure DevOps Server
+    [servers.AzDo]
     address = "http://azdo:8080/azdo"
     defaultCollection = "dc"
 
-    # Azure Pipelines
-    [servers.azuredevops] # Server "name" is azuredevops.
+    # Azure DevOps
+    [servers.AzureDevOps]
     address = "https://dev.azure.com/devorg"
 
-    # Azure Pipelines
-    [servers.OtherAzureDevOpsInstance] # Server "name" is OtherAzureDevOpsInstance
+    # Azure DevOps
+    [servers.OtherAzureDevOpsInstance]
     address = "https://dev.azure.com/devorg2"
+
+# As the access tokens aren't specified, the exporter requires them to be set in environment variables:
+# TFSEX_AzDo_ACCESSTOKEN
+# TFSEX_AzureDevOps_ACCESSTOKEN
+# TFSEX_OtherAzureDevOpsInstance_ACCESSTOKEN
 ```
 
 ### Configuration with proxy
 
 ```toml
 [servers]
-
     [servers.azuredevops]
     address = "https://dev.azure.com/devorg"
     useProxy = true
@@ -67,8 +104,6 @@ Access tokens should be configured through environment variables. The name of th
     endpoint = "/azdometrics"
 
 [servers]
-
-    # Azure Pipelines
     [servers.azuredevops]
     address = "https://dev.azure.com/devorg"
     useProxy = true
@@ -77,7 +112,7 @@ Access tokens should be configured through environment variables. The name of th
     [servers.AzDoInstance]
     address = "http://azdo:8080/azdo"
     defaultCollection = "dc"
-    # As access token isn't specified, an environment token called TFSEX_TFSInstance_ACCESSTOKEN needs to have been created and populated
+    # As the access token isn't specified, an environment variable called TFSEX_TFSInstance_ACCESSTOKEN needs to exist
 
 [proxy]
     url = "http://proxy.devorg.com:9191"
@@ -85,7 +120,7 @@ Access tokens should be configured through environment variables. The name of th
 
 ## Tips
 
-Set the prometheus scrape timeout to be larger than 10 seconds as scrapes can sometimes be longer 10s.
+Set the Prometheus scrape timeout to be larger than 10 seconds as scrapes can sometimes be longer 10s.
 
 ## Metrics Exposed
 
