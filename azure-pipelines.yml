@@ -5,7 +5,5 @@ pool: 'UKHO Ubuntu 1804'
 
 steps:
 - script: |
-    docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp golang:1.14 go get -v
-    docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp golang:1.14 go build -v
-    ls
-  displayName: 'Get dependencies, then build'
+    docker build -t azdoexporter .
+  displayName: 'Build exporter and image'
