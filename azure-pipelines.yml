@@ -1,7 +1,8 @@
 trigger:
 - master
 
-pool: 'UKHO Ubuntu 1804'
+pool:
+  vmImage: 'ubuntu-latest'
 
 steps:
 - task: Docker@2
